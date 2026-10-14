@@ -1,0 +1,100 @@
+name: Build Chinese Compositor
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build.yml'
+      - '*.patch'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compositor-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode 26.6
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          xcodebuild -version
+
+      - name: Fetch upstream and apply Chinese patch
+        run: |
+          set -euo pipefail
+          git clone https://github.com/robbietilton/Compositor.git source
+          git -C source checkout --detach 43d691b67995e924965bcd520f8b300f96b7d5b8
+          git -C source apply --check "$GITHUB_WORKSPACE/compositor-zh-Hans.patch"
+          git -C source apply "$GITHUB_WORKSPACE/compositor-zh-Hans.patch"
+          bash source/scripts/verify-localization.sh
+
+      - name: Resolve dependencies
+        working-directory: source
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project Compositor.xcodeproj -scheme Compositor \
+            -onlyUsePackageVersionsFromResolvedFile
+
+      - name: Build Release app with local signing
+        working-directory: source
+        run: |
+          set -euo pipefail
+          xcodebuild -project Compositor.xcodeproj -scheme Compositor \
+            -configuration Release -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath DerivedData \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+            build 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Run localization unit tests
+        working-directory: source
+        run: |
+          set -euo pipefail
+          xcodebuild -project Compositor.xcodeproj -scheme Compositor \
+            -configuration Debug -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath TestData -resultBundlePath LocalizationTests.xcresult \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+            test -only-testing:CompositorTests/LocalizationTests \
+            2>&1 | tee "$GITHUB_WORKSPACE/localization-tests.log"
+
+      - name: Verify resources and signature; package app
+        working-directory: source
+        run: |
+          set -euo pipefail
+          app='DerivedData/Build/Products/Release/Compositor.app'
+          test -d "$app"
+          test -f "$app/Contents/Resources/en.lproj/Localizable.strings"
+          test -f "$app/Contents/Resources/zh-Hans.lproj/Localizable.strings"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist"
+          mkdir -p "$GITHUB_WORKSPACE/package"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$GITHUB_WORKSPACE/package/Compositor-1.5.2-zh-Hans-arm64.zip"
+          shasum -a 256 "$GITHUB_WORKSPACE/package/Compositor-1.5.2-zh-Hans-arm64.zip" > "$GITHUB_WORKSPACE/package/SHA256SUMS.txt"
+
+      - name: Upload application
+        uses: actions/upload-artifact@v7
+        with:
+          name: Compositor-1.5.2-zh-Hans-arm64
+          path: package/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-diagnostics
+          path: |
+            build.log
+            localization-tests.log
+            source/LocalizationTests.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
