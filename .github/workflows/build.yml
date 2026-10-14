@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/build.yml'
       - '*.patch'
+      - 'fixes/**'
 
 permissions:
   contents: read
@@ -35,6 +36,8 @@ jobs:
           git -C source checkout --detach 43d691b67995e924965bcd520f8b300f96b7d5b8
           git -C source apply --check "$GITHUB_WORKSPACE/compositor-zh-Hans.patch"
           git -C source apply "$GITHUB_WORKSPACE/compositor-zh-Hans.patch"
+          git -C source apply --check "$GITHUB_WORKSPACE/fixes/startup-fix.patch"
+          git -C source apply "$GITHUB_WORKSPACE/fixes/startup-fix.patch"
           bash source/scripts/verify-localization.sh
 
       - name: Resolve dependencies
@@ -52,7 +55,37 @@ jobs:
             -configuration Release -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath DerivedData \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+            CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
             build 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Verify the Release app launches without Sparkle
+        working-directory: source
+        run: |
+          set -euo pipefail
+          app='DerivedData/Build/Products/Release/Compositor.app'
+          test ! -d "$app/Contents/Frameworks/Sparkle.framework"
+          otool -L "$app/Contents/MacOS/Compositor" > "$GITHUB_WORKSPACE/linked-libraries.log"
+          if grep -q 'Sparkle.framework' "$GITHUB_WORKSPACE/linked-libraries.log"; then
+            echo 'Unexpected Sparkle linkage'; exit 1
+          fi
+          python3 - <<'PYCODE'
+          import pathlib, subprocess, time
+          binary = pathlib.Path('DerivedData/Build/Products/Release/Compositor.app/Contents/MacOS/Compositor').resolve()
+          log = pathlib.Path('../startup-smoke.log')
+          with log.open('w') as output:
+              process = subprocess.Popen([str(binary), '-compositor.interfaceLanguage', 'zh-Hans'], stdout=output, stderr=subprocess.STDOUT)
+              try:
+                  time.sleep(15)
+                  if process.poll() is not None:
+                      raise RuntimeError(f'Release app exited during startup: {process.returncode}')
+                  print('PASS: Release app remained running for 15 seconds')
+              finally:
+                  if process.poll() is None:
+                      process.terminate()
+                      try: process.wait(timeout=10)
+                      except subprocess.TimeoutExpired: process.kill(); process.wait()
+          print(log.read_text())
+          PYCODE
 
       - name: Run localization unit tests
         working-directory: source
@@ -95,6 +128,8 @@ jobs:
           path: |
             build.log
             localization-tests.log
+            startup-smoke.log
+            linked-libraries.log
             source/LocalizationTests.xcresult
           if-no-files-found: ignore
           retention-days: 7
