@@ -314,6 +314,28 @@ index c6d5868..0000000
 -        #endif
 -    }
 -}
+diff --git a/Compositor/zh-Hans.lproj/Localizable.strings b/Compositor/zh-Hans.lproj/Localizable.strings
+index 7517e6f..6b8adc5 100644
+--- a/Compositor/zh-Hans.lproj/Localizable.strings
++++ b/Compositor/zh-Hans.lproj/Localizable.strings
+@@ -125,7 +125,7 @@
+ "Bring All to Front" = "全部前置";
+ "Brings back detail in bright areas the camera partly clipped" = "恢复相机中部分过曝亮区的细节";
+ "Brush" = "画笔";
+-"Brush (B) · Eraser (E)" = "画笔 (B) · Eraser (E)";
++"Brush (B) · Eraser (E)" = "画笔 (B) · 橡皮擦 (E)";
+ "Brush Stroke" = "画笔描边";
+ "Brush tool" = "画笔工具";
+ "CMYK Gamut Warning" = "CMYK 色域警告";
+@@ -1253,7 +1253,7 @@
+ "Zoom in (⌘+), now %1$@. At 100% each pixel of the export is one pixel of the screen" = "放大（⌘+），当前 %1$@。100% 时导出图像的一个像素对应屏幕的一个像素";
+ "Zoom out" = "缩小";
+ "Zoom out (⌘−)" = "缩小 (⌘−)";
+-"Zoom out (⌘−), now %1$@" = "缩小 (⌘−), now %1$@";
++"Zoom out (⌘−), now %1$@" = "缩小（⌘−），当前 %1$@";
+ "Zoom percentage" = "缩放百分比";
+ "Zoom percentage (0.1–3200%). Press Return to apply." = "缩放百分比（0.1–3200%）。按 Return 应用。";
+ "Zoom tool" = "缩放工具";
 diff --git a/CompositorTests/LocalizationTests.swift b/CompositorTests/LocalizationTests.swift
 index 98f75a0..b1a0bdf 100644
 --- a/CompositorTests/LocalizationTests.swift
